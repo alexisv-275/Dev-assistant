@@ -1,29 +1,40 @@
 import * as readline from 'readline';
 import { Conversation } from './conversation.js';
-import { DOCUMENTATION_ASSISTANT_PROMPT } from '../llm/prompts.js';
-import { client } from '../llm/anthropic-client.js';
+import { SOCRATIC_START_PROMPT, SOCRATIC_TUTOR_PROMPT } from '../llm/prompts.js';
+import { loadAcademicBase, formatAcademicContext } from '../academic/academic-base.js';
 import config from '../config.js';
 
 export async function startCLI(): Promise<void>
 {
+    const academicSources = await loadAcademicBase(config.academicBasePath);
+    const academicContext = formatAcademicContext(academicSources);
     const rl = readline.createInterface(
         {
             input: process.stdin,
             output: process.stdout
         }
     )
-    const conversation = new Conversation(DOCUMENTATION_ASSISTANT_PROMPT);
+    const conversation = new Conversation(SOCRATIC_TUTOR_PROMPT, academicContext);
     console.log("╔════════════════════════════════════════╗");
     console.log("║          DevAssistant v0.1             ║");
-    console.log("║    Asistente de Documentación IA       ║");
+    console.log("║       Tutor Socrático Académico        ║");
     console.log("╚════════════════════════════════════════╝");
     console.log("");
-    console.log("💬 Escribe tu pregunta y presiona Enter.");
+    console.log(`📚 Base académica cargada: ${academicSources.map((source) => source.source).join(", ")}`);
     console.log("   Comandos: /clear, /stats, /exit");
     console.log("");
-    const promptUser = ():void =>
+
+    const startClaudeConversation = async (): Promise<void> => {
+        process.stdout.write("\nClaude: ");
+        await conversation.start(SOCRATIC_START_PROMPT, (chunk) => {
+            process.stdout.write(chunk);
+        });
+        process.stdout.write("\n\n");
+    };
+
+    const promptUser = (): void =>
     {
-        rl.question("Tú: ",async (input) =>{
+        rl.question("Tú: ", async (input) => {
             const userInput = input.trim();
             if(!userInput)
             {
@@ -52,31 +63,22 @@ export async function startCLI(): Promise<void>
             if(userInput === "/clear" || userInput === "/limpiar")
             {
                 conversation.clear();
+                try {
+                    await startClaudeConversation();
+                } catch (error) {
+                    const err = error as Error;
+                    console.error(` Error al reiniciar la conversación: ${err.message}`);
+                }
                 promptUser();
                 return;
             }
             try {
                 conversation.addUserMessage(userInput);
                 process.stdout.write("\nClaude: ");
-                const record = conversation.getHistory();
-                let fullMessage = "";
-                const stream = client.messages.stream(
-                    {
-                        model: config.anthropicModel,
-                        max_tokens: 1024,
-                        system: DOCUMENTATION_ASSISTANT_PROMPT,
-                        messages: record,
-                    }
-                );
-                stream.on("text", (chunk) =>
-                {
+                await conversation.streamResponse((chunk) => {
                     process.stdout.write(chunk);
-                    fullMessage += chunk;
                 });
-                const finalMessage = await stream.finalMessage();
-                conversation.addUsage(finalMessage.usage.input_tokens, finalMessage.usage.output_tokens);
                 process.stdout.write("\n\n");
-                conversation.addAssistantMessage(fullMessage);
 
             } catch (error) {
                 const err = error as Error;
@@ -85,5 +87,13 @@ export async function startCLI(): Promise<void>
             promptUser();
         });
     };
-    promptUser();
+
+    try {
+        await startClaudeConversation();
+        promptUser();
+    } catch (error) {
+        const err = error as Error;
+        console.error(` Error al iniciar la conversación: ${err.message}`);
+        rl.close();
+    }
 }

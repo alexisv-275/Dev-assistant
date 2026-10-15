@@ -56,6 +56,7 @@ export interface AppConfig
     openaiModel: string;
     openaiEmbeddingModel: string;
     docsPath: string;
+    academicBasePath: string;
     dbPath: string;
     ragTopK: number;
 }

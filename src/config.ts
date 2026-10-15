@@ -33,6 +33,7 @@ export const config: AppConfig = {
   openaiModel: getRequiredEnvVar("OPENAI_MODEL", "gpt-4o-mini"),
   openaiEmbeddingModel: getRequiredEnvVar("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
   docsPath: getRequiredEnvVar("DOCS_PATH", "./docs/sample-project"),
+  academicBasePath: getRequiredEnvVar("ACADEMIC_BASE_PATH", "./docs/academic"),
   dbPath: getRequiredEnvVar("DB_PATH", "./data/vectors.db"),
   ragTopK: parseInt(getRequiredEnvVar("RAG_TOP_K", "5"), 10),
 };
