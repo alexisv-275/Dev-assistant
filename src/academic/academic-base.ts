@@ -6,6 +6,8 @@ export interface AcademicSource {
     content: string;
 }
 
+
+//2.Cargar contexto academico
 export async function loadAcademicBase(directory: string): Promise<AcademicSource[]> {
     let entries;
     try {
@@ -38,6 +40,7 @@ export async function loadAcademicBase(directory: string): Promise<AcademicSourc
     return sources;
 }
 
+//Convertir contenido para enviarlo a Claude
 export function formatAcademicContext(sources: AcademicSource[]): string {
     return sources
         .map(({ source, content }) => `### Fuente: ${source}\n${content}`)

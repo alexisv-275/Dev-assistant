@@ -4,6 +4,7 @@ import { SOCRATIC_START_PROMPT, SOCRATIC_TUTOR_PROMPT } from '../llm/prompts.js'
 import { loadAcademicBase, formatAcademicContext } from '../academic/academic-base.js';
 import config from '../config.js';
 
+//1.Iniciar interfaz en la terminal
 export async function startCLI(): Promise<void>
 {
     const academicSources = await loadAcademicBase(config.academicBasePath);
@@ -14,6 +15,7 @@ export async function startCLI(): Promise<void>
             output: process.stdout
         }
     )
+    //3.Entregar el system prompt y el contexto académico a la conversación
     const conversation = new Conversation(SOCRATIC_TUTOR_PROMPT, academicContext);
     console.log("╔════════════════════════════════════════╗");
     console.log("║          DevAssistant v0.1             ║");
@@ -26,6 +28,7 @@ export async function startCLI(): Promise<void>
 
     const startClaudeConversation = async (): Promise<void> => {
         process.stdout.write("\nClaude: ");
+        //Iniciar la conversación
         await conversation.start(SOCRATIC_START_PROMPT, (chunk) => {
             process.stdout.write(chunk);
         });
