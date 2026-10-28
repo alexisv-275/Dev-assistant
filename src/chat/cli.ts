@@ -1,102 +1,131 @@
-import * as readline from 'readline';
-import { Conversation } from './conversation.js';
-import { SOCRATIC_START_PROMPT, SOCRATIC_TUTOR_PROMPT } from '../llm/prompts.js';
-import { loadAcademicBase, formatAcademicContext } from '../academic/academic-base.js';
-import config from '../config.js';
+import * as readline from "readline";
+import { Conversation } from "./conversation.js";
+import { DOCUMENTATION_ASSISTANT_PROMPT } from "../llm/prompts.js";
+import { processDirectory } from "../rag/chunker.js";
+import { generateEmbeddings } from "../rag/embeddings.js";
+import config from "../config.js";
+import { VectorStore } from "../rag/vector-store.js";
+import { resetStore } from "../rag/retriever.js";
+import { askWithRAG } from "../rag/rag-chain.js";
 
-//1.Iniciar interfaz en la terminal
-export async function startCLI(): Promise<void>
-{
-    const academicSources = await loadAcademicBase(config.academicBasePath);
-    const academicContext = formatAcademicContext(academicSources);
-    const rl = readline.createInterface(
-        {
-            input: process.stdin,
-            output: process.stdout
+async function ingestDocs(docsPath: string): Promise<void> {
+  console.log(`\nIniciando ingestión desde: ${docsPath}`);
+
+  const chunks = await processDirectory(docsPath);
+
+  if (chunks.length === 0) {
+    console.log("No se encontraron archivos .md en ese directorio.");
+    return;
+  }
+
+  console.log(`Generando embeddings para ${chunks.length} chunks...`);
+  const embeddings = await generateEmbeddings(chunks.map((c) => c.content));
+
+  const store = new VectorStore(config.dbPath);
+  store.clear();
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const embedding = embeddings[i];
+    if (chunk && embedding) store.insert(chunk, embedding);
+  }
+
+  console.log(`${store.size} chunks almacenados en ${config.dbPath}`);
+  store.close();
+
+  // Reiniciar el singleton
+  resetStore();
+  console.log("Vector store actualizado — listo para búsquedas\n");
+}
+
+export async function startCLI(): Promise<void> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const conversation = new Conversation(DOCUMENTATION_ASSISTANT_PROMPT);
+  console.log("╔════════════════════════════════════════╗");
+  console.log("║         DevAssistant v0.3              ║");
+  console.log("║   Asistente de Documentación RAG       ║");
+  console.log("╚════════════════════════════════════════╝");
+  console.log("");
+  console.log("💬 Escribe tu pregunta y presiona Enter.");
+  console.log("💡 Tip: usa /ingest para cargar documentación");
+  console.log("   Comandos: /ingest [path], /clear, /stats, /exit");
+  console.log("");
+
+  const promptUser = (): void => {
+    rl.question("Tú: ", async (input) => {
+      const userInput = input.trim();
+      if (!userInput) {
+        promptUser();
+        return;
+      }
+      if (userInput === "/stats") {
+        const stats = conversation.getStats();
+        console.log(`\n📊 Estadísticas de la conversación:`);
+        console.log(`   • Turnos: ${stats.turns}`);
+        console.log(`   • Tokens de entrada acumulados: ${stats.inputTokens}`);
+        console.log(`   • Tokens de salida acumulados: ${stats.outputTokens}`);
+        console.log(
+          `   • Tokens estimados en contexto actual: ${conversation.estimateCurrentTokens()}\n`,
+        );
+        promptUser();
+        return;
+      }
+      if (userInput === "/exit" || userInput === "/salida") {
+        const stats = conversation.getStats();
+        console.log(
+          ` Resumen: ${stats.turns} turnos ` +
+            `${stats.inputTokens} tokens de entrada ` +
+            `${stats.outputTokens} tokens de salida `,
+        );
+        rl.close();
+        return;
+      }
+      if (userInput === "/clear" || userInput === "/limpiar") {
+        conversation.clear();
+        promptUser();
+        return;
+      }
+
+      // ingest /docs-test
+      if (userInput.startsWith("/ingest")) {
+        const inputParts = userInput.split(" ");
+        const docsDirectory = inputParts[1] ?? config.docsPath;
+        try {
+          await ingestDocs(docsDirectory);
+        } catch (error) {
+          const err = error as Error;
+          console.error(`\nError durante la ingestión: ${err.message}`);
         }
-    )
-    //3.Entregar el system prompt y el contexto académico a la conversación
-    const conversation = new Conversation(SOCRATIC_TUTOR_PROMPT, academicContext);
-    console.log("╔════════════════════════════════════════╗");
-    console.log("║          DevAssistant v0.1             ║");
-    console.log("║       Tutor Socrático Académico        ║");
-    console.log("╚════════════════════════════════════════╝");
-    console.log("");
-    console.log(`📚 Base académica cargada: ${academicSources.map((source) => source.source).join(", ")}`);
-    console.log("   Comandos: /clear, /stats, /exit");
-    console.log("");
-
-    const startClaudeConversation = async (): Promise<void> => {
-        process.stdout.write("\nClaude: ");
-        //Iniciar la conversación
-        await conversation.start(SOCRATIC_START_PROMPT, (chunk) => {
-            process.stdout.write(chunk);
+        console.log("");
+        promptUser();
+        return;
+      }
+      try {
+        conversation.addUserMessage(userInput);
+        // askWithRAG ya recupera el contexto y comprueba si está vacío.
+        /*
+        const chunks = await retrieveContext(userInput);
+        if (chunks.length == 0) {
+          const message =
+            "No hay documentación disponible en le vector store.\n" +
+            "Usa el comando /ingest";
+          console.log(message);
+        }
+        */
+        const response = await askWithRAG(userInput, (outputChunk) => {
+          process.stdout.write(outputChunk);
         });
         process.stdout.write("\n\n");
-    };
-
-    const promptUser = (): void =>
-    {
-        rl.question("Tú: ", async (input) => {
-            const userInput = input.trim();
-            if(!userInput)
-            {
-                promptUser();
-                return;
-            }
-            if (userInput === "/stats") {
-                const stats = conversation.getStats();
-                console.log(`\n📊 Estadísticas de la conversación:`);
-                console.log(`   • Turnos: ${stats.turns}`);
-                console.log(`   • Tokens de entrada acumulados: ${stats.inputTokens}`);
-                console.log(`   • Tokens de salida acumulados: ${stats.outputTokens}`);
-                console.log(`   • Tokens estimados en contexto actual: ${conversation.estimateCurrentTokens()}\n`);
-                promptUser();
-                return;
-            }
-            if (userInput === "/exit" || userInput === "/salida") {
-                const stats = conversation.getStats();
-                console.log(` Resumen: ${stats.turns} turnos `+
-                    `${stats.inputTokens} tokens de entrada ` +
-                    `${stats.outputTokens} tokens de salida ` 
-                );
-                rl.close();
-                return;
-            }
-            if(userInput === "/clear" || userInput === "/limpiar")
-            {
-                conversation.clear();
-                try {
-                    await startClaudeConversation();
-                } catch (error) {
-                    const err = error as Error;
-                    console.error(` Error al reiniciar la conversación: ${err.message}`);
-                }
-                promptUser();
-                return;
-            }
-            try {
-                conversation.addUserMessage(userInput);
-                process.stdout.write("\nClaude: ");
-                await conversation.streamResponse((chunk) => {
-                    process.stdout.write(chunk);
-                });
-                process.stdout.write("\n\n");
-
-            } catch (error) {
-                const err = error as Error;
-                console.error(` Error: ${err.message}`);
-            }
-            promptUser();
-        });
-    };
-
-    try {
-        await startClaudeConversation();
-        promptUser();
-    } catch (error) {
+        conversation.addAssistantMessage(response);
+      } catch (error) {
         const err = error as Error;
-        console.error(` Error al iniciar la conversación: ${err.message}`);
-        rl.close();
-    }
+        console.error(` Error: ${err.message}`);
+      }
+      promptUser();
+    });
+  };
+  promptUser();
 }
