@@ -25,13 +25,16 @@ function validateProvider(provider: string): "anthropic" | "openai"
 
 const rawProvider = process.env["MODEL_PROVIDER"] ?? "anthropic";
 
+//Define los tipos de la configuración de la aplicación y valida las variables de entorno necesarias.
 export const config: AppConfig = {
   provider: validateProvider(rawProvider),
   anthropicApiKey: getRequiredEnvVar("ANTHROPIC_API_KEY", ""),
   openaiApiKey: getRequiredEnvVar("OPENAI_API_KEY", ""),
   anthropicModel: getRequiredEnvVar("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
   openaiModel: getRequiredEnvVar("OPENAI_MODEL", "gpt-4o-mini"),
-  openaiEmbeddingModel: getRequiredEnvVar("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+  voyageaiApiKey: getRequiredEnvVar("VOYAGEAI_API_KEY", ""),
+  voyageaiEmbeddingModel: getRequiredEnvVar("VOYAGEAI_EMBEDDING_MODEL", "voyage-4"),
+  embeddingDimensions: 1024,
   docsPath: getRequiredEnvVar("DOCS_PATH", "./docs/sample-project"),
   academicBasePath: getRequiredEnvVar("ACADEMIC_BASE_PATH", "./docs/academic"),
   dbPath: getRequiredEnvVar("DB_PATH", "./data/vectors.db"),

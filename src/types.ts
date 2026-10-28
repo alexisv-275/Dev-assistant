@@ -54,7 +54,9 @@ export interface AppConfig
     openaiApiKey: string;
     anthropicModel: string;
     openaiModel: string;
-    openaiEmbeddingModel: string;
+    voyageaiApiKey: string;
+    voyageaiEmbeddingModel: string;
+    embeddingDimensions: number;
     docsPath: string;
     academicBasePath: string;
     dbPath: string;
